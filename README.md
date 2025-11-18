@@ -1,15 +1,5 @@
-## Getting Started
+# SchoolSage
 
-First, run the development server:
+## Predicting and Visualizing Student Mastery of K-12 Standards for Teachers
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000)
+**SchoolSage aims to solve the problem of understanding specifically students' academic strengths and weaknesses. The vision and the hope is that teachers will be able to know exactly what a student has mastered and what needs improvement instead of just having a sense of what they know from Day 1 in the classroom.**
