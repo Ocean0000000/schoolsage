@@ -5,7 +5,13 @@
   --foreground: #171717;
 }
 
-@theme inline {
+@theme {
+	--color-schoolsage: #c3ecfe;
+	--color-schoolsage-disabled: #b0c4d9;
+  --color-gray-background: #323232;
+}
+
+/* @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
@@ -23,4 +29,4 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
-}
+} */
