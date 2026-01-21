@@ -1,6 +1,5 @@
 import { StackProps, Stack, RemovalPolicy, SecretValue, CfnOutput } from "aws-cdk-lib";
 import { Construct } from "constructs";
-import { join } from "path";
 import {
     UserPool,
     VerificationEmailStyle,
@@ -12,18 +11,15 @@ import {
     ProviderAttribute,
     OAuthScope,
 } from "aws-cdk-lib/aws-cognito";
-import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
-import { Runtime } from "aws-cdk-lib/aws-lambda";
+import { IFunction } from "aws-cdk-lib/aws-lambda";
 import { Effect, Policy, PolicyStatement } from "aws-cdk-lib/aws-iam";
+import { StringParameter } from "aws-cdk-lib/aws-ssm";
 
 export interface CognitoStackProps extends StackProps {
-    deploymentUrl: string;
+    stage: string;
     userPoolDomain: string;
-    googleClientId: string;
-    googleClientSecret: string;
-    microsoftClientId: string;
-    microsoftClientSecret: string;
-    microsoftTenantId: string;
+    linkAccountsLambda: IFunction;
+    customSignUpMessageLambda: IFunction;
 }
 
 export class CognitoStack extends Stack {
@@ -32,13 +28,31 @@ export class CognitoStack extends Stack {
 
         const {
             userPoolDomain,
-            deploymentUrl,
-            googleClientId,
-            googleClientSecret,
-            microsoftClientId,
-            microsoftClientSecret,
-            microsoftTenantId,
+            stage,
+            linkAccountsLambda,
+            customSignUpMessageLambda,
         } = props;
+
+        const parameterBase = `/schoolsage/${stage}`;
+        const deploymentUrl = StringParameter.valueForStringParameter(
+            this,
+            `${parameterBase}/deployment-url`
+        );
+        const googleClientId = StringParameter.valueForStringParameter(
+            this,
+            `${parameterBase}/google-client-id`
+        );
+        const microsoftClientId = StringParameter.valueForStringParameter(
+            this,
+            `${parameterBase}/microsoft-client-id`
+        );
+        const microsoftTenantId = StringParameter.valueForStringParameter(
+            this,
+            `${parameterBase}/microsoft-tenant-id`
+        );
+        const microsoftClientSecret = SecretValue.ssmSecure(
+            `${parameterBase}/microsoft-client-secret`
+        );
 
         const userPool = new UserPool(this, "SchoolSageUserPool", {
             selfSignUpEnabled: true,
@@ -59,13 +73,7 @@ export class CognitoStack extends Stack {
                 emailBody: "Your verification code is: {####}",
             },
             accountRecovery: AccountRecovery.EMAIL_ONLY,
-            removalPolicy: process.env.NODE_ENV === "development" ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
-        });
-
-        const linkAccounts = new NodejsFunction(this, "LinkAccounts", {
-            runtime: Runtime.NODEJS_22_X,
-            entry: join(__dirname, "../lambda/link-accounts/index.ts"),
-            handler: "index.handler",
+            removalPolicy: stage === "development" ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
         });
 
         const linkAccountsPolicyStatement = new PolicyStatement({
@@ -81,29 +89,22 @@ export class CognitoStack extends Stack {
             statements: [linkAccountsPolicyStatement]
         });
 
-        linkAccounts.role!.attachInlinePolicy(linkAccountsPolicy);
+        linkAccountsLambda.role!.attachInlinePolicy(linkAccountsPolicy);
 
-        const customSignUpMessageFn = new NodejsFunction(this, "CustomSignUpMessage", {
-            runtime: Runtime.NODEJS_22_X,
-            entry: join(__dirname, "../lambda/custom-sign-up-message/index.ts"),
-            handler: "index.handler",
-            environment: {
-                DEPLOYMENT_URL: deploymentUrl,
-            },
-        });
-
-        userPool.addTrigger(UserPoolOperation.PRE_SIGN_UP, linkAccounts);
-        userPool.addTrigger(UserPoolOperation.CUSTOM_MESSAGE, customSignUpMessageFn);
+        userPool.addTrigger(UserPoolOperation.PRE_SIGN_UP, linkAccountsLambda);
+        userPool.addTrigger(UserPoolOperation.CUSTOM_MESSAGE, customSignUpMessageLambda);
 
         const supportedProviders: UserPoolClientIdentityProvider[] = [UserPoolClientIdentityProvider.COGNITO];
         const dependencies: Construct[] = [];
 
         let googleProvider: UserPoolIdentityProviderGoogle | undefined;
-        if (googleClientId && googleClientSecret) {
+        if (googleClientId) {
             googleProvider = new UserPoolIdentityProviderGoogle(this, "SchoolSageGoogleProvider", {
                 userPool: userPool,
                 clientId: googleClientId || "",
-                clientSecretValue: SecretValue.unsafePlainText(googleClientSecret),
+                clientSecret: SecretValue.ssmSecure(
+                    `${parameterBase}/google-client-secret`
+                ).toString(),
                 scopes: ["email", "profile", "openid"],
                 attributeMapping: {
                     email: ProviderAttribute.GOOGLE_EMAIL,
@@ -124,7 +125,7 @@ export class CognitoStack extends Stack {
                 userPool: userPool,
                 name: "Microsoft",
                 clientId: microsoftClientId || "",
-                clientSecret: microsoftClientSecret || "",
+                clientSecret: microsoftClientSecret.toString(),
                 issuerUrl: `https://login.microsoftonline.com/${microsoftTenantId}/v2.0`,
                 scopes: ["openid", "profile", "email"],
                 attributeMapping: {
