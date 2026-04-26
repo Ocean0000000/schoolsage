@@ -44,3 +44,7 @@ next-env.d.ts
 # CDK asset staging directory
 .cdk.staging
 cdk.out
+
+# claude code and claude flow
+.claude
+.claude-flow

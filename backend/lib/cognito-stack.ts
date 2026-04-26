@@ -17,42 +17,35 @@ import { StringParameter } from "aws-cdk-lib/aws-ssm";
 
 export interface CognitoStackProps extends StackProps {
     stage: string;
+    deploymentUrl: string;
     userPoolDomain: string;
     linkAccountsLambda: IFunction;
     customSignUpMessageLambda: IFunction;
+    googleClientId?: string;
+    googleClientSecret?: string;
+    microsoftClientId?: string;
+    microsoftTenantId?: string;
+    microsoftClientSecret?: string;
 }
 
 export class CognitoStack extends Stack {
+    public readonly userPool: UserPool;
+
     constructor(scope: Construct, id: string, props: CognitoStackProps) {
         super(scope, id, props);
 
         const {
             userPoolDomain,
             stage,
+            deploymentUrl,
             linkAccountsLambda,
             customSignUpMessageLambda,
+            googleClientId,
+            googleClientSecret,
+            microsoftClientId,
+            microsoftTenantId,
+            microsoftClientSecret,
         } = props;
-
-        const parameterBase = `/schoolsage/${stage}`;
-        const deploymentUrl = StringParameter.valueForStringParameter(
-            this,
-            `${parameterBase}/deployment-url`
-        );
-        const googleClientId = StringParameter.valueForStringParameter(
-            this,
-            `${parameterBase}/google-client-id`
-        );
-        const microsoftClientId = StringParameter.valueForStringParameter(
-            this,
-            `${parameterBase}/microsoft-client-id`
-        );
-        const microsoftTenantId = StringParameter.valueForStringParameter(
-            this,
-            `${parameterBase}/microsoft-tenant-id`
-        );
-        const microsoftClientSecret = SecretValue.ssmSecure(
-            `${parameterBase}/microsoft-client-secret`
-        );
 
         const userPool = new UserPool(this, "SchoolSageUserPool", {
             selfSignUpEnabled: true,
@@ -75,6 +68,7 @@ export class CognitoStack extends Stack {
             accountRecovery: AccountRecovery.EMAIL_ONLY,
             removalPolicy: stage === "development" ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
         });
+        this.userPool = userPool;
 
         const linkAccountsPolicyStatement = new PolicyStatement({
             effect: Effect.ALLOW,
@@ -98,13 +92,11 @@ export class CognitoStack extends Stack {
         const dependencies: Construct[] = [];
 
         let googleProvider: UserPoolIdentityProviderGoogle | undefined;
-        if (googleClientId) {
+        if (googleClientId && googleClientSecret) {
             googleProvider = new UserPoolIdentityProviderGoogle(this, "SchoolSageGoogleProvider", {
                 userPool: userPool,
-                clientId: googleClientId || "",
-                clientSecret: SecretValue.ssmSecure(
-                    `${parameterBase}/google-client-secret`
-                ).toString(),
+                clientId: googleClientId,
+                clientSecretValue: SecretValue.unsafePlainText(googleClientSecret),
                 scopes: ["email", "profile", "openid"],
                 attributeMapping: {
                     email: ProviderAttribute.GOOGLE_EMAIL,
@@ -124,8 +116,8 @@ export class CognitoStack extends Stack {
             microsoftProvider = new UserPoolIdentityProviderOidc(this, "SchoolSageMicrosoftProvider", {
                 userPool: userPool,
                 name: "Microsoft",
-                clientId: microsoftClientId || "",
-                clientSecret: microsoftClientSecret.toString(),
+                clientId: microsoftClientId,
+                clientSecret: microsoftClientSecret,
                 issuerUrl: `https://login.microsoftonline.com/${microsoftTenantId}/v2.0`,
                 scopes: ["openid", "profile", "email"],
                 attributeMapping: {
